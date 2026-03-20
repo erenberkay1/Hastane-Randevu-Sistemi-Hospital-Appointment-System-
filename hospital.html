@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <title>Milli Sağlık Otomasyonu</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 600px;
+        }
+
+        h2 {
+            color: #1a73e8;
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .form-row {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #444;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: 0.3s;
+        }
+
+            button:hover {
+                background: #1557b0;
+            }
+
+        table {
+            width: 100%;
+            margin-top: 30px;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            background: #f8f9fa;
+            color: #666;
+        }
+
+        .btn-delete {
+            background: #d93025;
+            padding: 6px 12px;
+            font-size: 12px;
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>🏥 Milli Sağlık Randevu</h2>
+
+        <div class="form-row">
+            <label>Hasta TC Kimlik:</label>
+            <input type="text" id="tc" placeholder="11 haneli TC">
+        </div>
+
+        <div class="form-row">
+            <label>Doktor:</label>
+            <select id="doktorListesi"><option>Yükleniyor...</option></select>
+        </div>
+
+        <div style="display: flex; gap: 15px;" class="form-row">
+            <div style="flex: 1;">
+                <label>Tarih:</label>
+                <input type="date" id="tarih">
+            </div>
+            <div style="flex: 1;">
+                <label>Saat:</label>
+                <select id="saat">
+                    <option value="">Önce tarih ve doktor seçin...</option>
+                </select>
+            </div>
+        </div>
+
+        <button onclick="randevuAl()">Randevuyu Onayla</button>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>TC</th>
+                    <th>Doktor</th>
+                    <th>Saat</th>
+                    <th>İşlem</th>
+                </tr>
+            </thead>
+            <tbody id="listeGövde"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const api = "https://localhost:7103/api/Hastane";
+
+        const tumMesaiSaatleri = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"];
+
+        async function doktorlariGetir() {
+            try {
+                const res = await fetch(`${api}/doktorlar-listesi`);
+                const veriler = await res.json();
+                const select = document.getElementById('doktorListesi');
+                select.innerHTML = '<option value="">-- Doktor Seçin --</option>';
+                veriler.forEach(d => {
+                    select.innerHTML += `<option value="${d.id}">${d.adSoyad} (${d.brans})</option>`;
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function randevulariGetir() {
+            try {
+                const res = await fetch(`${api}/tum-randevular`);
+                const veriler = await res.json();
+                const gövde = document.getElementById('listeGövde');
+                gövde.innerHTML = "";
+                veriler.forEach(r => {
+                    gövde.innerHTML += `
+                <tr>
+                    <td>${r.tc}</td>
+                    <td>${r.doktor}</td>
+                    <td>${r.tarih} ${r.saat}</td>
+                    <td><button class="btn-delete" onclick="sil(${r.id})">Sil</button></td>
+                </tr>`;
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function saatleriGuncelle() {
+            const dId = document.getElementById('doktorListesi').value;
+            const tarih = document.getElementById('tarih').value;
+            const saatSelect = document.getElementById('saat');
+
+            if (!dId || !tarih) return;
+
+            try {
+                const res = await fetch(`${api}/dolu-saatler?doktorId=${dId}&tarih=${tarih}`);
+                const doluSaatler = await res.json();
+
+                saatSelect.innerHTML = "";
+
+                tumMesaiSaatleri.forEach(saat => {
+                    if (!doluSaatler.includes(saat)) {
+                        saatSelect.innerHTML += `<option value="${saat}">${saat}</option>`;
+                    }
+                });
+
+                if (saatSelect.innerHTML === "") {
+                    saatSelect.innerHTML = "<option value=''>Tüm saatler dolu!</option>";
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function randevuAl() {
+            const tc = document.getElementById('tc').value;
+            const dId = document.getElementById('doktorListesi').value;
+            const t = document.getElementById('tarih').value;
+            const s = document.getElementById('saat').value;
+
+            if (!tc || !dId || !t || !s) {
+                alert("Lütfen tüm alanları doldur!");
+                return;
+            }
+
+            try {
+                const res = await fetch(`${api}/randevu-al?tc=${tc}&doktorId=${dId}&tarih=${t}&saat=${s}`, { method: 'POST' });
+                const sonuc = await res.json();
+                alert(sonuc.mesaj);
+                randevulariGetir();
+                saatleriGuncelle();
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function sil(id) {
+            if (confirm("Silinsin mi?")) {
+                try {
+                    const res = await fetch(`${api}/Randevu-sil?Id=${id}`, { method: 'DELETE' });
+                    const sonuc = await res.json();
+                    alert(sonuc.mesaj);
+                    randevulariGetir();
+                    saatleriGuncelle();
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+        }
+
+        document.getElementById('doktorListesi').addEventListener('change', saatleriGuncelle);
+        document.getElementById('tarih').addEventListener('change', saatleriGuncelle);
+
+        doktorlariGetir();
+        randevulariGetir();
+    </script>
+
+</body>
+</html>
